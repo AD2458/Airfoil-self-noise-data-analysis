@@ -1,0 +1,167 @@
+#importing library
+library(car)        
+library(MASS)       
+library(nlme)       
+library(lmtest)     
+library(ggplot2)    
+    
+
+#intial model
+mlr_ols <- lm(
+  Scaled_sound_pressure_level ~ Frequency + Angle_of_attack + 
+  Chord_length + Free_stream_velocity + Suction_side_displacement_thickness,
+  data = arf
+)
+
+summary(mlr_ols) 
+
+#for q-q and residual vs fitted plot
+plot(mlr_ols)
+ 
+vif_values<-vif(mlr_ols)
+View(vif_values)
+#model with removed Angle of Attack
+
+mlr_ols1 <- lm(
+  Scaled_sound_pressure_level ~ Frequency + 
+  Chord_length + Free_stream_velocity + Suction_side_displacement_thickness,
+  data = arf
+)
+
+summary(mlr_ols1)
+
+plot(mlr_ols1) 
+
+#box-cox transformation
+boxcox_result <- boxcox(mlr_ols, lambda = seq(-2, 2, 0.1))
+
+lambda_opt <- boxcox_result$x[which.max(boxcox_result$y)]
+lambda_opt
+
+#model with transformations
+arf$Scaled_spl_boxcox <- ((arf$Scaled_sound_pressure_level ^ lambda_opt) - 1) / lambda_opt
+
+mlr_boxcox <- lm(
+  Scaled_spl_boxcox ~ Frequency + Chord_length + Free_stream_velocity   +Suction_side_displacement_thickness,
+  data = arf
+)
+
+summary(mlr_boxcox)
+
+#Polynomial regression model with linear and quadratic terms
+poly_model <- lm(
+  Scaled_sound_pressure_level ~ 
+    poly(Frequency, 2, raw = TRUE) +
+    poly(Angle_of_attack, 2, raw = TRUE) +
+    poly(Chord_length, 2, raw = TRUE) +
+    poly(Free_stream_velocity, 2, raw = TRUE) +
+    poly(Suction_side_displacement_thickness, 2, raw = TRUE),
+  data = arf
+)
+
+summary(poly_model)
+
+#Polynomial regression model with both interaction and quadratic terms selected from model selection using BIC
+poly_model_4 <- lm(
+  Scaled_sound_pressure_level ~ 
+    Free_stream_velocity +
+    I(Angle_of_attack^2) +
+    I(Chord_length^2) +
+    Frequency:Chord_length +
+    Frequency:Suction_side_displacement_thickness +
+    Angle_of_attack:Chord_length,
+  data = arf
+)
+
+summary(poly_model_4)
+
+#GLS
+gls_final_model1 <- gls(
+
+Scaled_sound_pressure_level ~ Frequency +
+Chord_length +
+Free_stream_velocity +
+Suction_side_displacement_thickness,
+data = arf,
+
+weights = varPower(form = ~ Suction_side_displacement_thickness),
+)
+
+summary(gls_final_model1)
+plot(gls_final_model1)
+
+#polynomial gls model
+gls_final_model <- gls(
+     
+     Scaled_sound_pressure_level ~ Frequency + 
+         Chord_length + 
+         Free_stream_velocity + 
+         Suction_side_displacement_thickness, 
+     data = arf,
+     
+     weights = varPower(form = ~ Suction_side_displacement_thickness),
+     
+     correlation = corAR1()
+ )
+ 
+  summary(gls_final_model)
+
+#Robust regression
+robust_model <- rlm(
+  Scaled_sound_pressure_level ~ Frequency + 
+  Chord_length + Free_stream_velocity + Suction_side_displacement_thickness,
+  data = arf
+)
+
+summary(robust_model)
+
+#Model selection
+n <- nrow(arf)
+
+# Forward 
+forward_bic <- step(
+  null_model,
+  scope = list(lower = null_model, upper = full_model),
+  direction = "forward",
+  k = log(n),
+  trace = TRUE
+)
+
+# Backward 
+backward_bic <- step(
+  full_model,
+  direction = "backward",
+  k = log(n),
+  trace = TRUE
+)
+
+# Stepwise 
+stepwise_bic <- step(
+  null_model,
+  scope = list(lower = null_model, upper = full_model),
+  direction = "both",
+  k = log(n),
+  trace = TRUE
+)
+
+#model selection code for polynomial regression
+
+full_poly_model <- lm(
+  Scaled_sound_pressure_level ~ (Frequency + Angle_of_attack +
+    Chord_length + Free_stream_velocity +
+    Suction_side_displacement_thickness)^2 +
+    I(Frequency^2) + I(Angle_of_attack^2) +
+    I(Chord_length^2) + I(Free_stream_velocity^2) +
+    I(Suction_side_displacement_thickness^2),
+  data = arf
+)
+
+null_model <- lm(Scaled_sound_pressure_level ~ 1, data = arf)
+
+stepwise_poly <- step(
+  null_model,
+  scope = list(lower = null_model, upper = full_poly_model),
+  direction = "both",
+  trace = TRUE
+)
+summary(stepwise_poly)
